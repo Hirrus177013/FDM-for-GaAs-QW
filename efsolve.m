@@ -1,51 +1,42 @@
-function Ef = efsolve(Nd, A, beta, E)
-    % efsolve: Giải phương trình cân bằng mật độ tìm Ef bằng Newton-Raphson tối ưu
-    % Phương trình: Nd = A * sigma_i ln(1 + exp(beta * (Ef - E_i)))
-    %
-    % Đầu vào:
-    %   Nd   : Mật độ donor (scalar)
-    %   A    : Hệ số tỉ lệ, thường là (m* kB T) / (pi hbar^2) (scalar)
-    %   beta : 1 / (kB*T) (scalar)
-    %   E    : Vector chứa các mức năng lượng E_i
-    % Đầu ra:
-    %   Ef   : Mức Fermi (scalar)
+function Ef = efsolve(Nd, A, beta, E, Ef_old)
+    % EFSOLVE: Halley's Method (Newton-Raphson bậc 3)
+    % Tương thích 100% với định nghĩa A = (m*kT)/(pi*hbar^2) của bạn
+    
+    % --- 1. Điểm xuất phát ---
+    Ef=Ef_old;
 
-    % --- 1. Tiền xử lý dữ liệu ---
-    E = E(:); % Đảm bảo E là vector cột
+    tol = 1e-15;       
+    max_iter = 50;     
     
-    % --- 2. Dự đoán ban đầu ---
-    Ef = 0; 
-    
-    % --- 3. Cài đặt thông số Newton-Raphson ---
-    tol = 1e-12;      
-    max_iter = 100;   
-    
-    % --- 4. Vòng lặp ---
-    for i = 1:max_iter
-        % Đối số u_i
-        u = beta * (Ef - E);
+    for iter = 1:max_iter
+        exp_term = exp(beta * (Ef - E));
         
-        % Tính f(Ef) dùng Stable Softplus Trick
-        term_f = max(u, 0) + log(1 + exp(-abs(u)));
-        val_f = A * sum(term_f) - Nd;  % Nhân A và trừ Nd
+        % Chặn tràn bộ nhớ (Overflow)
+        exp_term(isinf(exp_term)) = 1e300; 
         
-        % Tính đạo hàm f'(Ef)
-        term_df = 1 ./ (1 + exp(beta * (E - Ef)));
-        val_df = A * beta * sum(term_df); % Nhân A vào đạo hàm
+        % --- 2. Tính f, f' và f'' theo ĐÚNG định nghĩa A của bạn ---
+        f_val = A * sum(log(1 + exp_term)) - Nd;
+        f_prime = A * beta * sum(exp_term ./ (1 + exp_term));
+        f_double_prime = A * (beta^2) * sum(exp_term ./ ((1 + exp_term).^2));
         
-        if abs(val_df) < 1e-20
-            error('Đạo hàm quá nhỏ, Newton-Raphson thất bại.');
+        % --- 3. Bước nhảy Halley ---
+        numerator = 2 * f_val * f_prime;
+        denominator = 2 * (f_prime^2) - f_val * f_double_prime;
+        
+        dEf = - (numerator / denominator);
+        
+        % --- 4. Hãm phanh tuyệt đối ---
+        % Giới hạn bước nhảy tối đa là 0.5 eV để vĩnh viễn không bao giờ có lỗi mũ to
+        max_step = 0.5 * 1.602e-19; 
+        if abs(dEf) > max_step
+            dEf = sign(dEf) * max_step;
         end
         
-        % Cập nhật Ef
-        delta_Ef = val_f / val_df;
-        Ef = Ef - delta_Ef;
+        Ef = Ef + dEf;
         
-        % Kiểm tra hội tụ
-        if abs(delta_Ef) < tol
-            return; 
+        % --- 5. Điều kiện dừng ---
+        if abs(dEf) < tol || abs(f_val) < 1e-10 * Nd
+            break;
         end
     end
-    
-    warning('efsolve không hội tụ được đến độ chính xác tolerance yêu cầu trong %d vòng lặp.', max_iter);
 end
