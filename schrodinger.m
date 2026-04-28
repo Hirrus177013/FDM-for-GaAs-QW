@@ -1,39 +1,37 @@
 function [E, psi] = schrodinger(N, b, f, vc, vh, dz)
-    % Hàm giải phương trình Schrodinger 1D bằng sai phân hữu hạn
-    % Đầu ra:
-    % E   : Vector cột chứa TẤT CẢ N mức năng lượng
-    % psi : Ma trận chứa TẤT CẢ N hàm sóng
-
-    if nargin < 6
-        dz = 1; 
+    % Kiểm tra đầu vào để tìm thủ phạm gây NaN/Inf
+    vars = {b, f, vc, vh, dz};
+    names = {'b (Từ trường)', 'f (Điện trường)', 'vc (Giam hãm)', 'vh (Hartree)', 'dz (Lưới)'};
+    for i = 1:5
+        if any(isnan(vars{i}(:))) || any(isinf(vars{i}(:)))
+            error('LỖI: Biến %s chứa giá trị NaN hoặc Inf!', names{i});
+        end
     end
 
-    % Ép TẤT CẢ các thành phần thế năng về vector cột (đề phòng lỗi kích thước)
-    b = b(:);
-    f = f(:);
-    vc = vc(:); 
-    vh = vh(:);
+    % Đảm bảo các thế năng là vector cột
+    V_total = b(:) + f(:) + vc(:) + vh(:);
 
-    % --- ĐÃ SỬA LỖI TẠI ĐÂY ---
-    % Cộng trực tiếp các vector thế năng lại với nhau
-    V_total = b + f + vc + vh;
-
-    % Xây dựng Hamiltonian
-    e = ones(N, 1);
-    D2 = spdiags([e, -2*e, e], [-1, 0, 1], N, N) / (dz^2);
-    V_matrix = spdiags(V_total, 0, N, N);
+    % Xây dựng Hamiltonian chuẩn hóa (nhân dz^2) để các số hạng về cỡ O(1)
+    e_vec = ones(N, 1);
+    T_grid = spdiags([-e_vec, 2*e_vec, -e_vec], [-1, 0, 1], N, N); % Động năng
+    V_grid = spdiags(V_total .* (dz^2), 0, N, N);                 % Thế năng
+    H_grid = T_grid + V_grid;
     
-    % H = -D2 + V
-    H = -D2 + V_matrix;
+    % Ép đối xứng để eigs chạy ổn định hơn
+    H_grid = (H_grid + H_grid') / 2;
 
-    % Giải toàn bộ phổ bằng eig (chuyển thưa thành đặc)
-    [V_eig, D_eig] = eig(full(H));
-
-    % Trích xuất E và sắp xếp từ thấp lên cao
-    E = diag(D_eig);
-    [E, sort_idx] = sort(E);
+    % Giải 15 mức thấp nhất
+    num_states = 15;
+    opts.disp = 0;
     
-    % Sắp xếp lại các cột hàm sóng tương ứng với E
+    % Kỹ thuật SHIFT: Tìm các trị riêng quanh mức thế năng thấp nhất để tránh "badly conditioned"
+    sigma = min(V_total .* (dz^2)); 
+    [V_eig, D_eig] = eigs(H_grid, num_states, sigma, opts);
+
+    % Chuyển đổi ngược lại đơn vị Joule
+    E_grid = diag(D_eig);
+    [E_grid, sort_idx] = sort(E_grid);
+    E = E_grid / (dz^2);
     psi = V_eig(:, sort_idx);
 
     % Chuẩn hóa hàm sóng
