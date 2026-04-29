@@ -1,5 +1,5 @@
 % =========================================================================
-% CHƯƠNG TRÌNH VẼ HỆ SỐ HẤP THỤ QUANG HỌC TỔNG CỘNG (FIG 5)
+% CHƯƠNG TRÌNH VẼ HỆ SỐ HẤP THỤ QUANG HỌC TỔNG CỘNG 
 % =========================================================================
 clear; clc; close all;
 
@@ -23,15 +23,21 @@ m0   = 9.10938356e-31;
 mstar = 0.067 * m0;      
 kB   = 1.38064852e-23;  
 
-nr      = 3.2;                  
-eps_rel = 12.58;                 
+% --- TÁCH BIỆT HAI LOẠI HẰNG SỐ ĐIỆN MÔI ---
+nr       = 3.2;                  
+eps_opt  = nr^2;       % Hằng số điện môi quang học (dùng cho alpha)
+eps_stat = 12.58;      % Hằng số điện môi tĩnh (dùng cho Poisson)
+% -------------------------------------------
+
 tau_in  = 0.14e-12;             
 gam     = hbar / tau_in;        
 I_int   = 0.5 * 1e10;           
 
 A       = (mstar * kB * T) / (pi * hbar^2);
-B_const = e^2 / (eps_rel * eps0);
+% Tính B_const bằng eps_stat để giải Poisson
+B_const = e^2 / (eps_stat * eps0); 
 beta    = 1 / (kB * T);
+
 N3d = zeros(N, 1);
 N3d(abs(z) <= d/2) = Nd / d;
 
@@ -44,16 +50,13 @@ b_term = (e^2 * B_field^2 / hbar^2) * z.^2;
 %% 2. TẠO LƯỚI THEO TẦN SỐ GÓC OMEGA
 F_array = [5e6, 15e6, 25e6]; 
 
-% Tạo vector gốc omega (Biến độc lập)
 E_photon_max_J = 300 * 1e-3 * e;
 omega_max      = E_photon_max_J / hbar;
 omega = linspace(0, omega_max, 301); 
 
-% Vector dẫn xuất dùng trong tính toán và vẽ đồ thị
 hw_J   = hbar * omega;          
 hw_meV = hw_J / e * 1000;       
 
-% Ma trận lưu kết quả hấp thụ alpha
 alpha12_store = zeros(length(F_array), length(omega));
 alpha23_store = zeros(length(F_array), length(omega));
 alpha13_store = zeros(length(F_array), length(omega));
@@ -88,9 +91,18 @@ for step = 1:length(F_array)
         if abs(Ef - Ef_old)/e*1000 < 1e-3, break; end
     end
     
-    % Các hệ số phụ thuộc omega
-    pre1 = omega * sqrt(mu0 / (eps_rel * eps0));
-    pre3 = -2 * omega * sqrt(mu0 / (eps_rel * eps0)) * (I_int / (eps0 * nr * c));
+    M11 = e * sum(psi(:,1) .* z .* psi(:,1)) * dz;
+    M22 = e * sum(psi(:,2) .* z .* psi(:,2)) * dz;
+    M33 = e * sum(psi(:,3) .* z .* psi(:,3)) * dz;
+    
+    M12 = e * sum(psi(:,1) .* z .* psi(:,2)) * dz;
+    M23 = e * sum(psi(:,2) .* z .* psi(:,3)) * dz;
+    M13 = e * sum(psi(:,1) .* z .* psi(:,3)) * dz;
+    
+    % --- Dùng eps_opt cho các phương trình quang học ---
+    pre1 = omega * sqrt(mu0 / (eps_opt * eps0));
+    pre3 = -2 * omega * sqrt(mu0 / (eps_opt * eps0)) * (I_int / (eps0 * nr * c));
+    % ---------------------------------------------------
     
     pairs = [1 2; 2 3; 1 3];
     for p = 1:3
@@ -99,26 +111,22 @@ for step = 1:length(F_array)
         
         dE = E_joule(f) - E_joule(i);
         
-        % --- LOGIC CHUẨN MA TRẬN 2x2 CHO MỌI (i, f) ---
-        % Trạng thái i đóng vai trò là "mức 1", trạng thái f là "mức 2"
-        M11 = e * sum(psi(:,i) .* z .* psi(:,i)) * dz;
-        M22 = e * sum(psi(:,f) .* z .* psi(:,f)) * dz;
-        M12 = e * sum(psi(:,i) .* z .* psi(:,f)) * dz;
-        % ----------------------------------------------
+        if p == 1,     M_if = M12; M_ii = M11; M_ff = M22;
+        elseif p == 2, M_if = M23; M_ii = M22; M_ff = M33;
+        else,          M_if = M13; M_ii = M11; M_ff = M33;
+        end
         
         sigma_if = (mstar * kB * T) / (pi * hbar^2 * L) * ...
                    log( (1 + exp((Ef - E_joule(i))/(kB*T))) ./ (1 + exp((Ef - E_joule(f))/(kB*T))) );
                
         term_denom = (dE - hw_J).^2 + gam^2; 
         
-        % Tính alpha1 và alpha3 dùng ĐÚNG các biến M12, M11, M22
-        alpha1 = pre1 .* (abs(M12)^2 * sigma_if * gam) ./ term_denom;
+        alpha1 = pre1 .* (abs(M_if)^2 * sigma_if * gam) ./ term_denom;
         
-        bracket3 = 1 - (abs(M22 - M11)^2 / (4 * abs(M12)^2)) .* ...
+        bracket3 = 1 - (abs(M_ff - M_ii)^2 / (4 * abs(M_if)^2)) .* ...
                    ( (dE - hw_J).^2 - gam^2 + 2*dE*(dE - hw_J) ) ./ (dE^2 + gam^2);
-        alpha3 = pre3 .* (abs(M12)^4 * sigma_if * gam) ./ (term_denom.^2) .* bracket3;
+        alpha3 = pre3 .* (abs(M_if)^4 * sigma_if * gam) ./ (term_denom.^2) .* bracket3;
         
-        % Tổng hợp alpha(omega)
         alpha_tot_cm = (alpha1 + alpha3) / 100;
         
         if p == 1,     alpha12_store(step, :) = alpha_tot_cm;
