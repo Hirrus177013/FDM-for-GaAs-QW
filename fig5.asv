@@ -25,7 +25,7 @@ mstar = 0.067 * m0;
 kB   = 1.38064852e-23;  
 
 nr      = 3.2;                  
-eps_rel = 12.58;                 
+eps_rel = 12.7;                 
 tau_in  = 0.14e-12;             
 gam     = hbar / tau_in;        
 I_int   = 0.5 * 1e10;           
