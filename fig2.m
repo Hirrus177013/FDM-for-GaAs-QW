@@ -1,7 +1,6 @@
 % =========================================================================
 % CHƯƠNG TRÌNH CHÍNH: MAIN.M
 % Mô phỏng mức năng lượng trong giếng lượng tử GaAs pha tạp
-% (Phiên bản TỐI ƯU CỰC HẠN: Tự động tương thích với 6 mức năng lượng)
 % =========================================================================
 clear; clc; close all;
 
